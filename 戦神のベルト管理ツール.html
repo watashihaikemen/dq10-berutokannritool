@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>戦神のベルト管理ツール</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 700px; margin: auto; }
+    h1 { text-align: center; color: #333; }
+    .effect-block { margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
+    label { font-weight: bold; display: block; margin-bottom: 5px; color: #555; }
+    select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
+    #totalScore { display: none; } /* 合計点数を非表示に */
+    .button-group { text-align: center; margin-top: 20px; }
+    .button-group button { padding: 10px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; color: white; }
+    #saveButton { background-color: #28a745; }
+    #saveButton:hover { background-color: #218838; }
+    #savedBeltsSection { margin-top: 40px; border-top: 2px solid #eee; padding-top: 20px; }
+    #savedBeltsSection h2 { text-align: center; color: #333; }
+    .saved-belt-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
+    .saved-belt-item:hover { background-color: #f1f1f1; }
+    .saved-belt-info { cursor: pointer; flex-grow: 1; }
+    .saved-belt-info span { display: block; font-size: 14px; color: #666; }
+    .saved-belt-info strong { display: none; } /* 保存されたベルトの合計点数を非表示に */
+    .saved-belt-delete { background-color: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; }
+    .saved-belt-delete:hover { background-color: #c82333; }
+    .sort-button-group { text-align: center; margin-bottom: 20px; }
+    .sort-button-group button { padding: 8px 15px; font-size: 14px; cursor: pointer; border: 1px solid #ccc; border-radius: 5px; background-color: #f0f0f0; margin: 0 5px; }
+  </style>
+</head>
+<body>
+  <h1>戦神のベルト管理ツール</h1>
+
+  <div id="effectsContainer"></div>
+  <div id="totalScore">合計点数: 0.0</div>
+
+  <div class="button-group">
+    <button id="saveButton">現在のベルトを保存</button>
+  </div>
+
+  <div id="savedBeltsSection">
+    <h2>保存されたベルト</h2>
+    <div class="sort-button-group">
+      <button id="sortDivine">神ベルト順</button>
+      <button id="sortTrash">ゴミベルト順</button>
+    </div>
+    <div id="savedBeltsList"></div>
+  </div>
+
+  <script>
+    const effectsData = {
+      "効果なし": -30,
+      "こうげき力+15": 15,
+      "こうげき力+20": 21.8,
+      "こうげき力+25": 22,
+      "こうげき魔力と回復魔力+30": 14.9,
+      "こうげき魔力と回復魔力+40": 21.7,
+      "こうげき魔力と回復魔力+50": 21.9,
+      "会心率と呪文暴走率+1.0%": 14.8,
+      "会心率と呪文暴走率+1.5%": 21.7,
+      "会心率と呪文暴走率+2.0%": 21.8,
+      "盾装備で開戦時○○系": 0.05
+    };
+
+    const weaponEffects = {
+      "片手剣": 18,
+      "両手剣": 17.9,
+      "短剣": 17.8,
+      "スティック": 17.7,
+      "両手杖": 17.6,
+      "ヤリ": 17.5,
+      "オノ": 17.4,
+      "棍": 17.3,
+      "ツメ": 17.2,
+      "ムチ": 17.1,
+      "扇": 17.0,
+      "ハンマー": 16.9,
+      "ブーメラン": 16.8,
+      "弓": 16.7,
+      "鎌": 16.6
+    };
+
+    const monsterTypes = {
+        "ドラゴン系": 16.5,
+        "虫系": 16.4,
+        "獣系": 16.3,
+        "ゾンビ系": 16.2,
+        "植物系": 16.1,
+        "怪人系": 16.0,
+        "悪魔系": 15.9,
+        "エレ系": 15.8,
+        "鳥系": 15.7,
+        "物質系": 15.6,
+        "スライム系": 15.5,
+        "マシン系": 15.4,
+        "水系": 15.3
+    };
+
+    const newEffects = {
+      "取り敢えず収納 (カテゴリー用)": 0,
+      "汎用ベルト (カテゴリー用)": 10000,
+      "保留中のベルト (カテゴリー用)": 2000,
+      "前衛職用ベルト (カテゴリー用)": 8000,
+      "中衛職用ベルト (カテゴリー用)": 6000,
+      "後衛職用ベルト (カテゴリー用)": 4000
+    };
+
+    const elements = ["炎", "氷", "風", "雷", "土", "闇", "光"];
+    const percentages = [12, 13, 14, 15];
+
+    // 武器+属性ダメージ効果を生成
+    for (const weapon in weaponEffects) {
+      const baseScore = weaponEffects[weapon];
+      for (const element of elements) {
+        for (const percentage of percentages) {
+          const score = baseScore + (percentage - 12);
+          effectsData[`${weapon}装備時 ${element}の攻撃ダメージ+${percentage}%`] = score;
+        }
+      }
+    }
+    
+    // モンスター系統へのダメージ効果を生成
+    for (const type in monsterTypes) {
+        const baseScore = monsterTypes[type];
+        for (let i = 0; i < 4; i++) {
+            const percentage = 9 + i;
+            const score = baseScore + (i * 1.0) + (i > 0 ? 0.0 : 0.0);
+            effectsData[`${type}にダメージ+${percentage}%`] = score;
+        }
+    }
+    
+    const container = document.getElementById('effectsContainer');
+    const savedBeltsList = document.getElementById('savedBeltsList');
+    const saveButton = document.getElementById('saveButton');
+    const sortDivineButton = document.getElementById('sortDivine');
+    const sortTrashButton = document.getElementById('sortTrash');
+    const savedBeltsKey = 'savedBelts';
+
+    function createEffectSelects() {
+        for (let i = 0; i < 6; i++) {
+            const div = document.createElement('div');
+            div.className = 'effect-block';
+
+            const label = document.createElement('label');
+            label.textContent = `効果 ${i + 1}`;
+
+            const select = document.createElement('select');
+            
+            // 新しい効果を最初に表示
+            for (let effect in newEffects) {
+              const option = document.createElement('option');
+              option.value = effect;
+              option.textContent = effect;
+              select.appendChild(option);
+            }
+            
+            // 既存の効果を追加
+            for (let effect in effectsData) {
+                const option = document.createElement('option');
+                option.value = effect;
+                option.textContent = effect;
+                select.appendChild(option);
+            }
+
+            select.addEventListener('change', updateAndSort);
+            div.appendChild(label);
+            div.appendChild(select);
+            container.appendChild(div);
+        }
+    }
+
+    function updateAndSort() {
+        const selects = container.querySelectorAll('select');
+        const currentValues = Array.from(selects).map(select => select.value);
+
+        // 新しい効果と既存の効果を統合
+        const allEffectsData = { ...newEffects, ...effectsData };
+
+        currentValues.sort((a, b) => (allEffectsData[b] || 0) - (allEffectsData[a] || 0));
+
+        let total = 0;
+        selects.forEach((select, index) => {
+            const newValue = currentValues[index];
+            select.value = newValue;
+            total += allEffectsData[newValue] || 0;
+        });
+
+        document.getElementById('totalScore').textContent = `合計点数: ${total.toFixed(1)}`;
+    }
+
+    function saveCurrentBelt() {
+        const selects = container.querySelectorAll('select');
+        const effects = Array.from(selects).map(select => select.value);
+        const savedBelts = getSavedBelts();
+        
+        savedBelts.push(effects);
+        localStorage.setItem(savedBeltsKey, JSON.stringify(savedBelts));
+        renderSavedBelts();
+    }
+
+    function getSavedBelts() {
+        const savedBelts = localStorage.getItem(savedBeltsKey);
+        return savedBelts ? JSON.parse(savedBelts) : [];
+    }
+    
+    function calculateTotalScore(effects) {
+        const allEffectsData = { ...newEffects, ...effectsData };
+        return effects.reduce((sum, effect) => sum + (allEffectsData[effect] || 0), 0);
+    }
+    
+    function sortBelts(direction) {
+        const savedBelts = getSavedBelts();
+        if (direction === 'divine') {
+            savedBelts.sort((a, b) => calculateTotalScore(b) - calculateTotalScore(a));
+        } else if (direction === 'trash') {
+            savedBelts.sort((a, b) => calculateTotalScore(a) - calculateTotalScore(b));
+        }
+        localStorage.setItem(savedBeltsKey, JSON.stringify(savedBelts));
+        renderSavedBelts();
+    }
+
+    function renderSavedBelts() {
+        savedBeltsList.innerHTML = '';
+        const savedBelts = getSavedBelts();
+        
+        savedBelts.forEach((effects, index) => {
+            const beltItem = document.createElement('div');
+            beltItem.className = 'saved-belt-item';
+
+            const beltInfo = document.createElement('div');
+            beltInfo.className = 'saved-belt-info';
+            beltInfo.addEventListener('click', () => loadBelt(effects));
+
+            const totalScore = calculateTotalScore(effects);
+            const scoreDisplay = document.createElement('strong');
+            scoreDisplay.textContent = `合計点数: ${totalScore.toFixed(1)}`;
+            beltInfo.appendChild(scoreDisplay);
+
+            effects.forEach(effect => {
+                const effectSpan = document.createElement('span');
+                effectSpan.textContent = effect;
+                beltInfo.appendChild(effectSpan);
+            });
+
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'saved-belt-delete';
+            deleteButton.textContent = '削除';
+            deleteButton.addEventListener('click', () => deleteBelt(index));
+
+            beltItem.appendChild(beltInfo);
+            beltItem.appendChild(deleteButton);
+            savedBeltsList.appendChild(beltItem);
+        });
+    }
+
+    function loadBelt(effects) {
+        const selects = container.querySelectorAll('select');
+        effects.forEach((effect, index) => {
+            if (selects[index]) {
+                selects[index].value = effect;
+            }
+        });
+        updateAndSort();
+    }
+
+    function deleteBelt(index) {
+        const savedBelts = getSavedBelts();
+        savedBelts.splice(index, 1);
+        localStorage.setItem(savedBeltsKey, JSON.stringify(savedBelts));
+        renderSavedBelts();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        createEffectSelects();
+        updateAndSort();
+        renderSavedBelts();
+        saveButton.addEventListener('click', saveCurrentBelt);
+        sortDivineButton.addEventListener('click', () => sortBelts('divine'));
+        sortTrashButton.addEventListener('click', () => sortBelts('trash'));
+    });
+  </script>
+</body>
+</html>
